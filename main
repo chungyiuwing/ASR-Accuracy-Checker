@@ -1,0 +1,115 @@
+import docx
+from docx.shared import RGBColor
+import jieba
+import difflib
+import matplotlib.pyplot as plt
+def read_docx(file_path):
+    doc = docx.Document(file_path)
+    content = ''
+    for paragraph in doc.paragraphs:
+        if paragraph.text.strip():
+            content += paragraph.text + ' '
+    return content
+
+def calculate_similarity(content1, content2):
+
+    content1 = ''.join(char for char in content1 if char.isalpha())
+    content2 = ''.join(char for char in content2 if char.isalpha())
+
+    seq = difflib.SequenceMatcher(None, content1, content2)
+    opcodes = seq.get_opcodes()
+
+    error_words = set()
+    added_words = set()
+    missing_words = set()
+
+    for tag, i1, i2, j1, j2 in opcodes:
+        if tag == 'replace':
+            for char in content2[j1:j2]:
+              if char not in error_words:
+                error_words.add(char)
+
+        elif tag == 'insert':
+            for char in content2[j1:j2]:
+              if char not in error_words:
+                added_words.add(char)
+        elif tag == 'delete':
+            for char in content1[i1:i2]:
+              if char not in error_words:
+                missing_words.add(char)
+
+
+    total_words = len(content1)
+
+    similarity = ((len(error_words) + len(added_words) + len(missing_words)) / total_words) * 100
+
+    return similarity, error_words, added_words, missing_words, total_words
+
+def mark_errors(file_path, error_words, added_words, missing_words):
+    doc = docx.Document()
+    paragraph = doc.add_paragraph()
+
+    word_index = 0
+    error_start = False
+
+    for char in file_path:
+        if char.isalpha():
+            if char in error_words:
+                if not error_start:
+                    error_start = True
+                    run = paragraph.add_run(char)
+                    font = run.font
+                    font.color.rgb = RGBColor(255, 0, 0)
+                else:
+                    run.text += char
+            elif char in added_words:
+                run = paragraph.add_run(char)
+                font = run.font
+                font.color.rgb = RGBColor(0, 128, 0)
+                error_start = False
+            elif char in missing_words:
+                if not error_start:
+                    run = paragraph.add_run(f'({char})')
+                    font = run.font
+                    font.color.rgb = RGBColor(0, 0, 255)
+                else:
+                    run.text += char
+            else:
+                paragraph.add_run(char)
+                error_start = False
+
+    doc.save("marked_output.docx")
+
+
+fileA_path = 'off.docx'
+fileB_path = 'Byte.docx'
+
+
+contentA = read_docx(fileA_path)
+contentB = read_docx(fileB_path)
+
+if contentA and contentB:
+    similarity, error_words, added_words, missing_words, total_words = calculate_similarity(contentA, contentB)
+
+    print("相似度：", similarity)
+    print("文件中錯誤的字：", error_words, "\n" ,"total", len(error_words))
+    print("文件中多出的字：", added_words, "\n" , "total", len(added_words))
+    print("文件中缺少的字：", missing_words, "\n"  "total", len(missing_words))
+    print("total words：", total_words)
+    mark_errors(contentB, error_words, added_words, missing_words)
+
+
+error_words_proportion = len(error_words) / total_words * 100
+added_words_proportion = len(added_words) / total_words * 100
+missing_words_proportion = len(missing_words) / total_words * 100
+
+labels = ['Error Words', 'Added Words', 'Missing Words']
+sizes = [error_words_proportion, added_words_proportion, missing_words_proportion]
+colors = ['red', 'green', 'blue']
+
+plt.pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%')
+
+plt.show()
+
+
+
